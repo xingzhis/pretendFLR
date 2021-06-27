@@ -23,7 +23,9 @@ y_class = (y > y_med).astype(int)
 X_1 = add_const_col(X)
 X_train, X_test, y_train, y_test = train_test_split(X_1, y_class, test_size=0.2, random_state=42)
 
-arb = Arbiter([X_train], [y_train], learning_rate=10, use_linear_grad_loss=False)
+arb = Arbiter([X_train], [y_train], learning_rate=10, use_linear_grad_loss=False, aggregate="weight")
+# arb = Arbiter([X_train], [y_train], learning_rate=10, use_linear_grad_loss=False, aggregate="gradient")
+
 arb.train(converge_ratio=1e-5, max_iterations=10000)
 
 myLR = arb.get_model()
@@ -57,7 +59,9 @@ X1, X2, y1, y2 = train_test_split(X_train, y_train, test_size=0.2, random_state=
 X1, X3, y1, y3 = train_test_split(X1, y1, test_size=0.3, random_state=42)
 X1, X4, y1, y4 = train_test_split(X1, y1, test_size=0.4, random_state=42)
 
-arb = Arbiter([X1, X2, X3, X4], [y1, y2, y3, y4], learning_rate=10)
+arb = Arbiter([X1, X2, X3, X4], [y1, y2, y3, y4], learning_rate=10, aggregate="weight")
+# arb = Arbiter([X1, X2, X3, X4], [y1, y2, y3, y4], learning_rate=10, aggregate="gradient")
+
 arb.train(converge_ratio=1e-5, max_iterations=10000)
 
 myLR = arb.get_model()

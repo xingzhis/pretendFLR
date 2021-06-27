@@ -2,17 +2,33 @@
 @ Xingzhi Sun
 June 26 2021
 Class definitions of logistic regression.
-Instead of aggregating gradients, aggregate weights.
-Guest
-- Owns a partial dataset.
-- Computes gradient, then update weight, then send weight to arbiter.
-- Receives the aggregated weight from the arbiter, then update the weight.
+two aggregation modes:
+1. aggregating gradients.
+2. aggregate weights.
 
-Arbiter:
-- Receives weight from guests.
-- Checks convergence? or let the guests check.
-- Aggregates the weights.
-- Sends the aggregated weights to guests.
+Aggregate gradients:
+    Guest
+    - Owns a partial dataset.
+    - Computes gradient, then send to the arbiter.
+    - Receives the aggregated gradient from the arbiter, then update the weights.
+
+    Arbiter:
+    - Receives gradients from guests.
+    - Checks convergence.
+    - Aggregates the gradients.
+    - Sends the aggregated gradient to guests.
+
+Aggregate weights:
+    Guest
+    - Owns a partial dataset.
+    - Computes gradient, then update weight, then send weight to arbiter.
+    - Receives the aggregated weight from the arbiter, then update the weight.
+
+    Arbiter:
+    - Receives weight from guests.
+    - Checks convergence? or let the guests check.
+    - Aggregates the weights.
+    - Sends the aggregated weights to guests.
 """
 import numpy as np
 import warnings
@@ -43,13 +59,13 @@ class Guest:
         print("Gradient:{}".format(grad))
         self.w_ -= self.learning_rate_ * grad
         return self.w_
-    def update(self, grad):
+    def update_gradient(self, grad):
         self.w_ -= self.learning_rate_ * grad
     def update_weight(self, weight):
         self.w_ = weight
 
 class Arbiter:
-    def __init__(self, X_list, y_list, learning_rate=0.01, use_linear_grad_loss=False, averaging_method="sample_size"):
+    def __init__(self, X_list, y_list, learning_rate=0.01, use_linear_grad_loss=False, averaging_method="sample_size", aggregate="weight"):
         self.use_linear_grad_loss_ = use_linear_grad_loss
         self.n_parties_ = len(X_list)
         if len(y_list) != self.n_parties_:
@@ -67,6 +83,10 @@ class Arbiter:
             self.guest_weights_ = self.guest_weights_/self.guest_weights_.sum()
         else:
             raise ValueError("Invalid argument averaging_method: \"{}\"!".format(averaging_method))
+        if aggregate in ["weight", "gradient"]:
+            self.aggregate_ = aggregate
+        else:
+            raise ValueError("Invalid argument aggregate: \"{}\"!".format(aggregate))
     def convergence_check(self, last_loss, this_loss, iter_num):
         if iter_num >= self.max_iterations_:
             warnings.warn("Jumped out of loop at max iter! Did not converge. Max iter set too small?")
@@ -86,16 +106,30 @@ class Arbiter:
         round_num = 0
         while not is_converged:
             this_loss_list = []
-            weight_list = []
-            for i in range(self.n_parties_):
-                weighti = self.guests_[i].send_weight()
-                weight_list.append(weighti)
-                print("Guest {}, weight:{}".format(i, np.round(self.guests_[i].w_, 3)))
-            weight_aggregated = self.aggregate_params(weight_list)
-            print("Aggregated weight:{}".format(np.round(weight_aggregated, 3)))
-            for i in range(self.n_parties_):
-                self.guests_[i].update_weight(weight_aggregated)
-                this_loss_list.append(self.guests_[i].loss())
+            if self.aggregate_ == "weight":
+                weight_list = []
+                for i in range(self.n_parties_):
+                    weighti = self.guests_[i].send_weight()
+                    weight_list.append(weighti)
+                    print("Guest {}, weight:{}".format(i, np.round(self.guests_[i].w_, 3)))
+                weight_aggregated = self.aggregate_params(weight_list)
+                print("Aggregated weight:{}".format(np.round(weight_aggregated, 3)))
+                for i in range(self.n_parties_):
+                    self.guests_[i].update_weight(weight_aggregated)
+                    this_loss_list.append(self.guests_[i].loss())
+            elif self.aggregate_ == "gradient":
+                grad_list = []
+                for i in range(self.n_parties_):
+                    gradi = self.guests_[i].gradient()
+                    grad_list.append(gradi)
+                    print("Guest {}, weight:{}, gradient:{}".format(i, np.round(self.guests_[i].w_, 3), np.round(gradi, 3)))
+                grad_aggregated = self.aggregate_params(grad_list)
+                print("Aggregated gradient:{}".format(np.round(grad_aggregated, 3)))
+                for i in range(self.n_parties_):
+                    self.guests_[i].update_gradient(grad_aggregated)
+                    this_loss_list.append(self.guests_[i].loss())
+            else:
+                raise Exception("Invalid aggregating method:{}!".format(self.aggregate_))
             this_loss = self.guest_weights_ @ np.array(this_loss_list)
             is_converged = self.convergence_check(last_loss, this_loss, round_num)
             print("Iter:{}, loss:{}, last_loss:{}".format(round_num, this_loss, last_loss))
